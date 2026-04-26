@@ -1,0 +1,15 @@
+name: Trading Bot Cron
+
+on:
+  schedule:
+    - cron: '* * * * *'  # Every minute
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  ping-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Trading Bot
+        run: |
+          curl -X GET "https://next-dashboard-peach-sigma.vercel.app/api/pump-sniper" \
+            -H "Authorization: Bearer HqUcK4dYzS5SiJfEUyXS59YQdKR8VYYJxMd3gHdLsLA="
