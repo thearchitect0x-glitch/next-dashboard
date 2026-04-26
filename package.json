@@ -1,6 +1,6 @@
 {
   "name": "blackstar-v2-trading-bot",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Multi-DEX Solana trading bot (pump.fun + Raydium)",
   "private": true,
   "scripts": {
