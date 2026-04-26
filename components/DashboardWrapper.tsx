@@ -29,6 +29,8 @@ const DashboardWrapper = () => {
                 </div>div> 
           </div>div> 
         ); 
+
+    export default DashboardWrapper;
 }; 
 
 export default DashboardWrapper;
