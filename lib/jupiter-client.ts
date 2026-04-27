@@ -4,106 +4,101 @@ import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { TradeResult } from '../types/trading';
 
 interface SwapParams {
-  inputMint: string;
-  outputMint: string;
-  amount: number;
-  slippageBps: number; // Basis points (100 = 1%)
-}
-
-interface QuoteResponse {
-  inputMint: string;
-  outputMint: string;
-  inAmount: number;
-  outAmount: number;
-  priceImpact: number;
-  route: string[];
+    inputMint: string;
+    outputMint: string;
+    amount: number;
+    slippageBps: number; // Basis points (100 = 1%)
 }
 
 export class JupiterClient {
-  private connection: Connection;
-  private wallet: PublicKey;
-  private readonly JUPITER_API = 'https://quote-api.jup.ag/v6';
+    private connection: Connection;
+    private wallet: PublicKey;
+    private readonly JUPITER_API = 'https://quote-api.jup.ag/v6';
 
   constructor(connection: Connection, walletAddress: string) {
-    this.connection = connection;
-    this.wallet = new PublicKey(walletAddress);
+        this.connection = connection;
+        this.wallet = new PublicKey(walletAddress);
   }
 
-  async getQuote(params: SwapParams): Promise<QuoteResponse | null> {
-    try {
-      // In production, this would call Jupiter's actual API
-      // Simulating a quote response for development
-      
-      const mockQuote: QuoteResponse = {
-        inputMint: params.inputMint,
-        outputMint: params.outputMint,
-        inAmount: params.amount,
-        outAmount: params.amount * 1.02, // 2% profit simulation
-        priceImpact: 0.1,
-        route: ['Raydium', 'Orca']
-      };
+  async getQuote(params: SwapParams): Promise<any | null> {
+        try {
+                const url = `${this.JUPITER_API}/quote?inputMint=${params.inputMint}&outputMint=${params.outputMint}&amount=${params.amount}&slippageBps=${params.slippageBps}`;
+                const response = await fetch(url);
+                const quote = await response.json();
 
-      return mockQuote;
-    } catch (error: any) {
-      console.error('Failed to get quote:', error);
-      return null;
-    }
+          if (quote.error) {
+                    console.error('Jupiter quote error:', quote.error);
+                    return null;
+          }
+
+          return quote;
+        } catch (error: any) {
+                console.error('Failed to get real Jupiter quote:', error);
+                return null;
+        }
   }
 
   async executeSwap(params: SwapParams): Promise<TradeResult> {
-    const startTime = Date.now();
+        const startTime = Date.now();
+        const { SolanaClient } = require('./solana-utils');
+        const signer = SolanaClient.getSigner();
 
-    try {
-      // Step 1: Get quote
-      const quote = await this.getQuote(params);
-      if (!quote) {
-        return {
-          success: false,
-          error: 'Failed to get quote',
-          timestamp: startTime
-        };
+      if (!signer) {
+              return { success: false, error: 'No signer available. Check SIGNER_PRIVATE_KEY.', timestamp: startTime };
       }
 
-      // Step 2: Check profitability
-      const profit = quote.outAmount - quote.inAmount;
-      if (profit <= 0) {
-        return {
-          success: false,
-          error: 'Trade not profitable',
-          timestamp: startTime
-        };
+      try {
+              // 1. Get real quote
+          const quote = await this.getQuote(params);
+              if (!quote) return { success: false, error: 'Failed to get quote', timestamp: startTime };
+
+          // 2. Get swap transaction
+          const swapRes = await fetch(`${this.JUPITER_API}/swap`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                                quoteResponse: quote,
+                                userPublicKey: this.wallet.toString(),
+                                wrapAndUnwrapSol: true,
+                                dynamicComputeUnitLimit: true,
+                                prioritizationFeeLamports: 50000 // Small priority fee
+                    })
+          });
+
+          const { swapTransaction } = await swapRes.json();
+              if (!swapTransaction) return { success: false, error: 'Failed to get swap transaction', timestamp: startTime };
+
+          // 3. Deserialize and sign
+          const { VersionedTransaction } = require('@solana/web3.js');
+              const transactionBuf = Buffer.from(swapTransaction, 'base64');
+              const transaction = VersionedTransaction.deserialize(transactionBuf);
+
+          transaction.sign([signer]);
+
+          // 4. Execute
+          const signature = await this.connection.sendRawTransaction(transaction.serialize(), {
+                    skipPreflight: false,
+                    preflightCommitment: 'confirmed'
+          });
+
+          // 5. Confirm
+          await this.connection.confirmTransaction(signature, 'confirmed');
+
+          return {
+                    success: true,
+                    signature: signature,
+                    profit: (Number(quote.outAmount) - Number(quote.inAmount)) / 1e9, // Estimated
+                    timestamp: startTime,
+                    gasUsed: 0.00005
+          };
+
+      } catch (error: any) {
+              console.error('Swap execution failed:', error);
+              return {
+                        success: false,
+                        error: error.message,
+                        timestamp: startTime
+              };
       }
-
-      // Step 3: Build and send transaction
-      // In production, this would:
-      // 1. Call Jupiter API to get swap transaction
-      // 2. Sign with wallet
-      // 3. Send to Solana network
-      // 4. Wait for confirmation
-
-      // Simulating successful trade
-      const mockSignature = `${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-
-      return {
-        success: true,
-        signature: mockSignature,
-        profit: profit,
-        timestamp: startTime,
-        gasUsed: 0.0001 // SOL
-      };
-
-    } catch (error: any) {
-      return {
-        success: false,
-        error: error.message,
-        timestamp: startTime
-      };
-    }
-  }
-
-  async getSwapTransaction(quote: QuoteResponse): Promise<Transaction> {
-    // In production, this would get the actual swap transaction from Jupiter
-    // For now, returning empty transaction
-    return new Transaction();
   }
 }
