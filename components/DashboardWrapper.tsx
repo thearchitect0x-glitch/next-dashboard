@@ -4,31 +4,18 @@ import AnimatedLogo from './AnimatedLogo';
 import CommandCenter from './CommandCenter';
 import MarketIntelligence from './MarketIntelligence';
 
-const DashboardWrapper = () => {
-  return (
-    <div className="relative min-h-screen bg-black text-white p-4 md:p-8 geometric-grid">
-      <div className="max-w-7xl mx-auto">
-        <header className="mb-12">
-          <AnimatedLogo />
-        </header>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <CommandCenter />
-          </div>
-          <div className="lg:col-span-1">
-            <MarketIntelligence />
-          </div>
+const DashboardWrapper = () => (
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-8">
+        <div className="max-w-7xl mx-auto">
+              <header className="mb-12 flex justify-between">
+                      <AnimatedLogo />
+              </header>
+              <div className="grid grid-cols-3 gap-8">
+                      <div className="col-span-2"><CommandCenter /></div>
+                      <div className="col-span-1"><MarketIntelligence /></div>
+              </div>
         </div>
-        
-        <footer className="mt-12 pt-8 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-white/30 uppercase tracking-widest">
-          <div>System_Status: Operational</div>
-          <div>v2.0.4-stable</div>
-          <div>Lat: 14ms</div>
-        </footer>
-      </div>
     </div>
   );
-};
 
 export default DashboardWrapper;
