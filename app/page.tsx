@@ -1,4 +1,4 @@
-import DashboardWrapper from "@/components/DashboardWrapper";
+import DashboardWrapper from '../components/DashboardWrapper';
 
 export default function Home() {
   return (
