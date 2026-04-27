@@ -66,8 +66,93 @@ export default function DashboardWrapper() {
                                             <span className="text-xs uppercase opacity-50">Profit 24h</span>span>
                                             <span className="text-[#00ff9d] font-bold">+{stats.profit.toFixed(3)} ETH</span>span>
                                 </div>div>
-                                <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">
-                                            <span className="text-xs uppercase opacity-50">Nodes</span>span>
+                                <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">'use client';
+                                    
+                                    import React, { useState, useEffect } from 'react';
+                                    import { CommandCenter } from './CommandCenter';
+                                    import { AnimatedLogo } from './AnimatedLogo';
+                                    
+                                    export default function DashboardWrapper() {
+                                          const [stats, setStats] = useState({ balance: 0.423, status: 'CONNECTED', autorun: false, profit: 0.012 });
+                                    
+                                      useEffect(() => {
+                                              const fetchStatus = async () => {
+                                                        try {
+                                                                    const res = await fetch('/api/stats');
+                                            const data = await res.json();
+                                            if (data && !data.error) {
+                                                          setStats(prev => ({
+                                                                          ...prev,
+                                                                          balance: data.balance,
+                                                                          profit: data.totalProfit,
+                                                                          status: 'CONNECTED'
+                                                          }));
+                                    }
+                                    } catch (e) {
+                                                setStats(prev => ({ ...prev, status: 'SYNC_ERROR' }));
+                                    }
+                                    };
+                                        const id = setInterval(fetchStatus, 10000);
+                                        fetchStatus();
+                                        return () => clearInterval(id);
+                                    }, []);
+                                    
+                                      return (
+                                        <div className="min-h-screen bg-black text-[#00ff9d] font-mono p-4 selection:bg-[#00ff9d] selection:text-black">
+                                            {/* Header */}
+                                              <div className="flex justify-between items-start mb-8 border-b border-[#00ff9d]/20 pb-4">
+                                                      <div className="flex gap-6 items-center">
+                                                                <AnimatedLogo />
+                                                                <div>
+                                                                            <h1 className="text-2xl font-black tracking-tighter leading-none mb-1">GLITCH_DASH_V4</h1>h1>
+                                                                            <div className="flex gap-3 text-[10px] opacity-70">
+                                                                                          <span className="flex items-center gap-1">
+                                                                                                          <span className="w-1.5 h-1.5 bg-[#00ff9d] rounded-full animate-pulse" />
+                                                                                                          SYSTEM_STABLE
+                                                                                              </span>span>
+                                                                                          <span>LOC: GLOBAL_NET</span>span>
+                                                                            </div>div>
+                                                                </div>div>
+                                                      </div>div>
+                                                      
+                                                      <div className="text-right relative z-10">
+                                                                <div className="text-xs uppercase opacity-50 mb-1 font-bold">Total Liquidity</div>div>
+                                                                <div className="text-4xl font-black tracking-tighter">{stats.balance.toFixed(3)} ETH</div>div>
+                                                      </div>div>
+                                              </div>div>
+                                        
+                                            {/* Status Bar */}
+                                              <div className="grid grid-cols-4 gap-4">
+                                                      <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">
+                                                                <span className="text-xs uppercase opacity-50">Pulse</span>span>
+                                                                <span className={stats.status === 'CONNECTED' ? 'text-[#00ff9d]' : 'text-red-500'}>{stats.status}</span>span>
+                                                      </div>div>
+                                                      <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">
+                                                                <span className="text-xs uppercase opacity-50">Autorun</span>span>
+                                                                <span className="text-orange-500">DISABLED</span>span>
+                                                      </div>div>
+                                                      <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">
+                                                                <span className="text-xs uppercase opacity-50">Profit 24h</span>span>
+                                                                <span className="text-[#00ff9d] font-bold">+{stats.profit.toFixed(3)} ETH</span>span>
+                                                      </div>div>
+                                                      <div className="bg-black/40 border border-[#00ff9d]/20 p-4 rounded flex justify-between items-center">
+                                                                <span className="text-xs uppercase opacity-50">Nodes</span>span>
+                                                                <span>12/12 ACTIVE</span>span>
+                                                      </div>div>
+                                              </div>div>
+                                        
+                                            {/* Main Content */}
+                                              <CommandCenter />
+                                        
+                                            {/* Footer / System Info */}
+                                              <div className="mt-8 pt-4 border-t border-[#00ff9d]/10 text-[10px] opacity-30 flex justify-between uppercase tracking-widest">
+                                                      <div>(c) 2024 GLITCH_LABS // ALL RIGHTS RESERVED</div>div>
+                                                      <div>SECURED_CONNECTION_AES_256</div>div>
+                                              </div>div>
+                                        </div>div>
+                                  );
+                                    }
+                                /div><span className="text-xs uppercase opacity-50">Nodes</span>span>
                                             <span>12/12 ACTIVE</span>span>
                                 </div>div>
                       </div>div>
@@ -77,7 +162,14 @@ export default function DashboardWrapper() {
               </div>div>
         
           {/* Footer / System Info */}
-              <div className="mt-8 pt-4 border-t border-[#00ff9d]/10 text-[10px        <div>(c) 2024 GLITCH_LABS // ALL RIGHTS RESERVED</div>
+              <div clas      <div className="mt-8 pt-4 border-t border-[#00ff9d]/10 text-[10px] opacity-30 flex justify-between uppercase tracking-widest">
+                      <div>(c) 2024 GLITCH_LABS // ALL RIGHTS RESERVED</div>div>
+                      <div>SECURED_CONNECTION_AES_256</div>div>
+              </div>div>
+        </div>div>
+        );
+}
+</div>Name="mt-8 pt-4 border-t border-[#00ff9d]/10 text-[10px        <div>(c) 2024 GLITCH_LABS // ALL RIGHTS RESERVED</div>
                         <div>SECURED_CONNECTION_AES_256</div>
                 </div>
                 </div>
