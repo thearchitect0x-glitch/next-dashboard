@@ -1,87 +1,359 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-const COLORS = { ivory: '#FFFFF0', black: '#292e30', accent: '#4ade80', danger: '#ef4444', warning: '#f59e0b' };
+const COLORS = {
+  ivory: '#FFFFF0',
+  black: '#0a0a0a',
+  accent: '#00ff88',
+  danger: '#ff3366',
+  warning: '#ffaa00',
+  grid: '#1a1a1a'
+};
+
+interface Trade {
+  id: string;
+  timestamp: number;
+  type: 'BUY' | 'SELL';
+  token: string;
+  amount: number;
+  price: number;
+  profit: number;
+  dex: string;
+}
+
+interface Pool {
+  address: string;
+  token0: string;
+  token1: string;
+  liquidity: number;
+  volume24h: number;
+  fee: number;
+  dex: string;
+}
+
+interface ArbOpportunity {
+  id: string;
+  route: string[];
+  spread: number;
+  grossProfit: number;
+  gasCost: number;
+  netProfit: number;
+  timestamp: number;
+}
+
+interface LatencyPoint {
+  timestamp: number;
+  rpcLatency: number;
+  execLatency: number;
+}
+
+interface DetectedBot {
+  id: string;
+  address: string;
+  lastSeen: number;
+  txCount: number;
+  strategy: string;
+}
 
 export default function CommandCenter() {
-  const [walletData, setWalletData] = useState({ balance: 0, spent24h: 0, profit24h: 0 });
-  const [carloMatrix] = useState([
-    { name: 'SOL/USDC', liquidity: 850000, volume24h: 2400000, opportunity: 92 },
-    { name: 'RAY/SOL', liquidity: 620000, volume24h: 1800000, opportunity: 78 },
-    { name: 'JUP/SOL', liquidity: 450000, volume24h: 1200000, opportunity: 65 },
-    { name: 'BONK/SOL', liquidity: 320000, volume24h: 900000, opportunity: 54 },
-    { name: 'ORCA/SOL', liquidity: 280000, volume24h: 750000, opportunity: 45 }
-  ]);
-  const [flashLoans] = useState([
-    { route: 'RAY', spread: 0.8, grossProfit: 0.156, gasCost: 0.003, netProfit: 0.153 },
-    { route: 'JUP', spread: 0.6, grossProfit: 0.118, gasCost: 0.003, netProfit: 0.115 },
-    { route: 'SOL', spread: 0.5, grossProfit: 0.095, gasCost: 0.002, netProfit: 0.093 },
-    { route: 'BONK', spread: 0.4, grossProfit: 0.072, gasCost: 0.003, netProfit: 0.069 }
-  ]);
+  const [isActive, setIsActive] = useState(false);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [arbOpps, setArbOpps] = useState<ArbOpportunity[]>([]);
+  const [latencyData, setLatencyData] = useState<LatencyPoint[]>([]);
+  const [detectedBots, setDetectedBots] = useState<DetectedBot[]>([]);
+  const [currentBundle, setCurrentBundle] = useState<string[]>([]);
+  const [stats, setStats] = useState({
+    balance: 0,
+    totalProfit: 0,
+    winRate: 0,
+    avgLatency: 0
+  });
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Fetch real-time data
   useEffect(() => {
-    const fetchBalance = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch('/api/pump-sniper-v3?history=true');
-        const data = await res.json();
-        if (data.success) setWalletData(prev => ({ ...prev, balance: data.balance || 0 }));
-      } catch (e) { console.error(e); }
+        const [tradesRes, poolsRes, arbRes, latencyRes, botsRes, bundleRes, statsRes] = await Promise.all([
+          fetch('/api/trades'),
+          fetch('/api/pools'),
+          fetch('/api/arbitrage'),
+          fetch('/api/latency'),
+          fetch('/api/bots'),
+          fetch('/api/bundles'),
+          fetch('/api/stats')
+        ]);
+
+        if (tradesRes.ok) setTrades(await tradesRes.json());
+        if (poolsRes.ok) setPools(await poolsRes.json());
+        if (arbRes.ok) setArbOpps(await arbRes.json());
+        if (latencyRes.ok) setLatencyData(await latencyRes.json());
+        if (botsRes.ok) setDetectedBots(await botsRes.json());
+        if (bundleRes.ok) setCurrentBundle(await bundleRes.json());
+        if (statsRes.ok) setStats(await statsRes.json());
+      } catch (e) {
+        console.error('Data fetch error:', e);
+      }
     };
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 5000);
+
+    fetchData();
+    const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
   }, []);
-  const getOpportunityColor = (opp) => opp >= 80 ? COLORS.accent : opp >= 60 ? COLORS.warning : COLORS.ivory + '40';
+
+  // Render latency scatter plot
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || latencyData.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = COLORS.black;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < canvas.width; i += 40) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, canvas.height);
+      ctx.stroke();
+    }
+    for (let i = 0; i < canvas.height; i += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(canvas.width, i);
+      ctx.stroke();
+    }
+
+    // Plot points
+    latencyData.forEach((point, idx) => {
+      const x = (idx / latencyData.length) * canvas.width;
+      const y = canvas.height - (point.rpcLatency / 100) * canvas.height;
+      
+      ctx.fillStyle = point.rpcLatency < 20 ? COLORS.accent : COLORS.warning;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }, [latencyData]);
+
+  const toggleBot = async () => {
+    try {
+      const res = await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: isActive ? 'stop' : 'start' })
+      });
+      if (res.ok) setIsActive(!isActive);
+    } catch (e) {
+      console.error('Control error:', e);
+    }
+  };
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '32px', color: COLORS.ivory }}>COMMAND CENTER</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
+    <div style={{ 
+      background: `linear-gradient(180deg, ${COLORS.black} 0%, #050505 100%)`,
+      minHeight: '100vh',
+      color: COLORS.ivory,
+      padding: '24px',
+      fontFamily: 'monospace'
+    }}>
+      {/* Header with Logo */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ width: '48px', height: '48px', background: COLORS.ivory, borderRadius: '50%', opacity: 0.9 }} />
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>BLACKSTAR COMMAND CENTER</h1>
+            <div style={{ fontSize: '12px', color: COLORS.accent }}>MULTI-DEX ARBITRAGE ENGINE</div>
+          </div>
+        </div>
+        
+        {/* Launch/Halt Button */}
+        <button
+          onClick={toggleBot}
+          style={{
+            background: isActive ? COLORS.danger : COLORS.black,
+            color: COLORS.ivory,
+            border: `3px solid ${isActive ? COLORS.danger : COLORS.ivory}`,
+            padding: '16px 48px',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            boxShadow: isActive ? `0 0 20px ${COLORS.danger}` : 'none',
+            transition: 'all 0.3s'
+          }}
+        >
+          {isActive ? '⬛ HALT' : '▶ LAUNCH'}
+        </button>
+      </div>
+
+      {/* Stats Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
         {[
-          { label: 'Wallet Balance', value: `${walletData.balance.toFixed(4)} SOL` },
-          { label: 'Spent 24h', value: `${walletData.spent24h.toFixed(4)} SOL` },
-          { label: 'Profit 24h', value: `+${walletData.profit24h.toFixed(4)} SOL`, color: COLORS.accent },
-          { label: 'Net PNL', value: `+${(walletData.profit24h - walletData.spent24h).toFixed(4)} SOL` }
+          { label: 'WALLET BALANCE', value: `${stats.balance.toFixed(4)} SOL`, color: COLORS.accent },
+          { label: 'TOTAL PROFIT 24H', value: `+${stats.totalProfit.toFixed(4)} SOL`, color: COLORS.accent },
+          { label: 'WIN RATE', value: `${stats.winRate.toFixed(1)}%`, color: COLORS.ivory },
+          { label: 'AVG LATENCY', value: `${stats.avgLatency.toFixed(1)}ms`, color: COLORS.warning }
         ].map((stat, i) => (
-          <div key={i} style={{ backgroundColor: COLORS.black, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
-            <div style={{ fontSize: '12px', color: COLORS.ivory + '80', marginBottom: '8px' }}>{stat.label}</div>
-            <div style={{ fontSize: '24px', fontWeight: 'bold', color: stat.color || COLORS.ivory }}>{stat.value}</div>
+          <div key={i} style={{ 
+            background: COLORS.grid,
+            padding: '20px',
+            borderRadius: '8px',
+            border: `1px solid ${COLORS.ivory}20`
+          }}>
+            <div style={{ fontSize: '11px', color: COLORS.ivory + '80', marginBottom: '8px' }}>{stat.label}</div>
+            <div style={{ fontSize: '22px', fontWeight: 'bold', color: stat.color }}>{stat.value}</div>
           </div>
         ))}
       </div>
-      <div style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: COLORS.ivory }}>CARLO MATRIX</h2>
-        <div style={{ backgroundColor: COLORS.black, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+
+      {/* Main Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Liquidity Heatmap */}
+        <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>LIQUIDITY HEATMAP</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-            {carloMatrix.map((pair, i) => (
-              <div key={i} style={{ padding: '16px', borderRadius: '6px', backgroundColor: getOpportunityColor(pair.opportunity) + '20', border: `2px solid ${getOpportunityColor(pair.opportunity)}` }}>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: COLORS.ivory, marginBottom: '8px' }}>{pair.name}</div>
-                <div style={{ fontSize: '11px', color: COLORS.ivory + 'cc' }}>Liq: ${(pair.liquidity / 1000).toFixed(0)}K</div>
-                <div style={{ fontSize: '11px', color: COLORS.ivory + 'cc' }}>Vol: ${(pair.volume24h / 1000).toFixed(0)}K</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: getOpportunityColor(pair.opportunity), marginTop: '8px' }}>{pair.opportunity}%</div>
+            {pools.slice(0, 10).map((pool, i) => {
+              const intensity = Math.min(pool.liquidity / 1000000, 1);
+              return (
+                <div key={i} style={{
+                  padding: '12px',
+                  borderRadius: '6px',
+                  background: `rgba(0, 255, 136, ${intensity * 0.3})`,
+                  border: `2px solid rgba(0, 255, 136, ${intensity})`,
+                  fontSize: '11px'
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{pool.token0}/{pool.token1}</div>
+                  <div>${(pool.liquidity / 1000).toFixed(0)}K</div>
+                  <div style={{ color: COLORS.accent }}>{pool.dex}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Flash Arb Opportunities */}
+        <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>FLASH ARB OPPORTUNITIES</h3>
+          <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+            {arbOpps.map((opp) => (
+              <div key={opp.id} style={{
+                padding: '12px',
+                marginBottom: '8px',
+                background: COLORS.black,
+                borderRadius: '6px',
+                border: `1px solid ${opp.netProfit > 0.1 ? COLORS.accent : COLORS.warning}`,
+                animation: 'pulse 2s infinite'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
+                  {opp.route.join(' → ')}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                  <span>Spread: {opp.spread.toFixed(2)}%</span>
+                  <span style={{ color: COLORS.accent }}>+{opp.netProfit.toFixed(3)} SOL</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
-      <div>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: COLORS.ivory }}>FLASH LOAN ARB MATRIX</h2>
-        <div style={{ backgroundColor: COLORS.black, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['Route', 'Spread %', 'Gross Profit', 'Gas Cost', 'Net Profit'].map((h, i) => <th key={i} style={{ textAlign: 'left', padding: '12px', color: COLORS.ivory + 'cc', fontSize: '12px', borderBottom: `1px solid ${COLORS.ivory}20` }}>{h}</th>)}</tr></thead>
-            <tbody>{flashLoans.map((loan, i) => (
-              <tr key={i}>
-                <td style={{ padding: '12px', color: COLORS.ivory, fontWeight: 'bold' }}>{loan.route}</td>
-                <td style={{ padding: '12px', color: COLORS.warning }}>{loan.spread.toFixed(1)}%</td>
-                <td style={{ padding: '12px', color: COLORS.accent }}>{loan.grossProfit.toFixed(3)} SOL</td>
-                <td style={{ padding: '12px', color: COLORS.danger }}>{loan.gasCost.toFixed(3)} SOL</td>
-                <td style={{ padding: '12px', color: COLORS.accent, fontWeight: 'bold' }}>{loan.netProfit.toFixed(3)} SOL</td>
-              </tr>
-            ))}</tbody>
-          </table>
+
+      {/* Second Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Trade Log */}
+        <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>TRADE EXECUTION LOG</h3>
+          <div style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '11px' }}>
+            {trades.map((trade) => (
+              <div key={trade.id} style={{
+                padding: '8px',
+                marginBottom: '6px',
+                background: COLORS.black,
+                borderLeft: `3px solid ${trade.type === 'BUY' ? COLORS.accent : COLORS.danger}`,
+                borderRadius: '4px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: trade.type === 'BUY' ? COLORS.accent : COLORS.danger }}>{trade.type}</span>
+                  <span>{trade.token}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: COLORS.ivory + '80' }}>
+                  <span>{trade.amount.toFixed(4)}</span>
+                  <span style={{ color: trade.profit > 0 ? COLORS.accent : COLORS.danger }}>
+                    {trade.profit > 0 ? '+' : ''}{trade.profit.toFixed(3)} SOL
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Latency Scatter Plot */}
+        <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>RPC LATENCY MONITOR</h3>
+          <canvas ref={canvasRef} width={280} height={180} style={{ width: '100%', borderRadius: '4px' }} />
+        </div>
+
+        {/* Detected Bots */}
+        <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>DETECTED MEV BOTS</h3>
+          <div style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '11px' }}>
+            {detectedBots.map((bot) => (
+              <div key={bot.id} style={{
+                padding: '8px',
+                marginBottom: '6px',
+                background: COLORS.black,
+                borderRadius: '4px',
+                border: `1px solid ${COLORS.danger}40`
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{bot.address.substring(0, 8)}...</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: COLORS.ivory + '80' }}>
+                  <span>{bot.strategy}</span>
+                  <span>{bot.txCount} txs</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <div style={{ marginTop: '32px', textAlign: 'center' }}>
-        <button style={{ backgroundColor: COLORS.black, color: COLORS.ivory, padding: '16px 48px', fontSize: '20px', fontWeight: 'bold', border: `2px solid ${COLORS.ivory}`, borderRadius: '8px', cursor: 'pointer' }}>🚀 GO LIVE</button>
+
+      {/* Bundle Builder */}
+      <div style={{ background: COLORS.grid, padding: '20px', borderRadius: '8px', border: `1px solid ${COLORS.ivory}20` }}>
+        <h3 style={{ fontSize: '14px', marginBottom: '16px', color: COLORS.ivory }}>BUNDLE CONSTRUCTION (REAL-TIME)</h3>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {currentBundle.map((tx, i) => (
+            <div key={i} style={{
+              padding: '12px 16px',
+              background: COLORS.black,
+              borderRadius: '6px',
+              border: `2px solid ${COLORS.accent}`,
+              fontSize: '12px',
+              animation: 'slideIn 0.3s ease-out'
+            }}>
+              TX {i + 1}: {tx.substring(0, 12)}...
+            </div>
+          ))}
+          {currentBundle.length === 0 && (
+            <div style={{ color: COLORS.ivory + '40', fontSize: '12px' }}>No bundle being constructed</div>
+          )}
+        </div>
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+        @keyframes slideIn {
+          from { transform: translateX(-20px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
